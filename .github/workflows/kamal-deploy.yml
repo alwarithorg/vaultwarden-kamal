@@ -1,0 +1,40 @@
+name: Build and Deploy Vaultwarden (amd64)
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Ruby and Install Kamal
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+      
+      - name: Install Kamal
+        run: gem install kamal
+        
+      - name: Inject vars into deploy.yml
+        run: |
+          sed -i "s,\${KAMAL_WEB_SERVER_IP},${{ vars.WEB_SERVER_IP }},g" config/deploy.yml
+          sed -i "s,\${KAMAL_WEB_SERVER_HOSTNAME},${{ vars.WEB_SERVER_HOSTNAME }},g" config/deploy.yml
+
+      - name: Deploy to Server
+        env:
+          DOCKERHUB_PERSONAL_ACCESS_TOKEN: ${{ secrets.DOCKERHUB_PERSONAL_ACCESS_TOKEN }}
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "${{ vars.WEB_SERVER_IP }}" >> ~/.ssh/known_hosts
+          
+          kamal setup || true 
+          kamal deploy
